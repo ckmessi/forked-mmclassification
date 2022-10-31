@@ -49,7 +49,7 @@ def inference_model_for_softmax(model, img):
     result['pred_class'] = model.CLASSES[result['pred_label']]
     return result
 
-def inference_for_folder(model, img_dir: str, save_file_path: str):
+def inference_for_folder(model, img_dir: str, save_file_path: str, max_count=1000):
     img_names = os.listdir(img_dir)
     result_list = []
     for img_name in tqdm(img_names):
@@ -61,6 +61,8 @@ def inference_for_folder(model, img_dir: str, save_file_path: str):
         res['pred_score'] = float(res['pred_score'])
         res['scores'] = res['scores'].tolist()
         result_list.append(res)
+        if len(result_list) >= max_count:
+            break
     
     with open(save_file_path, 'w') as f:
         json.dump(result_list, f)
