@@ -7,29 +7,27 @@ import numpy as np
 import torch
 from mmcls.datasets.pipelines import Compose
 from mmcv.parallel import collate, scatter
+from mmcls.models.utils.augment import BatchMixupLayer
 
-def inference_model_for_softmax(model, img):
+
+
+def inference_model_for_softmax(model, img, img_target):
     """Inference image(s) with the classifier.
 
-    Args:
-        model (nn.Module): The loaded classifier.
-        img (str/ndarray): The image filename or loaded image.
-
-    Returns:
-        result (dict): The classification results that contains
-            `class_name`, `pred_label` and `pred_score`.
     """
     cfg = model.cfg
     device = next(model.parameters()).device  # model device
+
+    # prepare for mixup 
+
     # build the data pipeline
     if isinstance(img, str):
-        if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromFile':
-            cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromFile'))
-        data = dict(img_info=dict(filename=img), img_prefix=None)
+        if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromMixupFile':
+            cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromMixupFile'))
+        data = dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=0.5))
     else:
-        if cfg.data.test.pipeline[0]['type'] == 'LoadImageFromFile':
-            cfg.data.test.pipeline.pop(0)
-        data = dict(img=img)
+        raise ValueError(f"Unexcepted branch")
+
     test_pipeline = Compose(cfg.data.test.pipeline)
     data = test_pipeline(data)
     data = collate([data], samples_per_gpu=1)
@@ -49,6 +47,7 @@ def inference_model_for_softmax(model, img):
 def main():
     parser = ArgumentParser()
     parser.add_argument('img', help='Image file')
+    parser.add_argument('img_target', help='Target Image file')
     parser.add_argument('config', help='Config file')
     parser.add_argument('checkpoint', help='Checkpoint file')
     parser.add_argument(
@@ -58,7 +57,7 @@ def main():
     # build the model from a config file and a checkpoint file
     model = init_model(args.config, args.checkpoint, device=args.device)
     # test a single image
-    result = inference_model_for_softmax(model, args.img)
+    result = inference_model_for_softmax(model, args.img, args.img_target)
 
     print(result)
 
