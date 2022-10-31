@@ -101,7 +101,7 @@ class LoadImageFromMixupFile(object):
         if self.to_float32:
             img = img.astype(np.float32)
         
-        print(f"filename_target: {filename_target}")
+        # print(f"filename_target: {filename_target}")
         img_target_bytes = self.file_client.get(filename_target)
         img_target = mmcv.imfrombytes(img_target_bytes, flag=self.color_type)
         if self.to_float32:
@@ -114,7 +114,7 @@ class LoadImageFromMixupFile(object):
         else:
             alpha = results['mixup_info']['alpha']
             lam = np.random.beta(alpha, alpha)
-        print(f"lambda is {lam}")
+        # print(f"lambda is {lam}")
         mixed_img = lam * img + (1 - lam) * img_target
 
         img = mixed_img
