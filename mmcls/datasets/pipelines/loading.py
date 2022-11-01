@@ -109,7 +109,7 @@ class LoadImageFromMixupFile(object):
         img_target = cv2.resize(img_target, (img.shape[1], img.shape[0]))
         
         # mixup
-        if results['mixup_info']['lam']:
+        if 'lam' in results['mixup_info']:
             lam = results['mixup_info']['lam']
         else:
             alpha = results['mixup_info']['alpha']
