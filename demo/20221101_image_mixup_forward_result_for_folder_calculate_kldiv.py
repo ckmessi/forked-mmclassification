@@ -48,7 +48,7 @@ def inference_model_for_softmax(model, img, img_src, lam=0.5):
     result['pred_class'] = model.CLASSES[result['pred_label']]
     return result
 
-def inference_for_folder(model, img_dir: str, img_src, save_file_path: str, max_count=1):
+def inference_for_folder(model, img_dir: str, img_src, save_file_path: str, max_count=1000):
     img_names = os.listdir(img_dir)
     dataset_kl_div_v_info_dict = defaultdict(list)
     
@@ -71,26 +71,29 @@ def inference_for_folder(model, img_dir: str, img_src, save_file_path: str, max_
             cur_scores_gt = scores_source * cur_lam + scores_target * (1-cur_lam)
             # print(f"cur_scores_gt: {cur_scores_gt}")
             # print(f"current_res: {current_res['scores']}")
-            kl_div_v = scipy.stats.entropy(cur_scores_gt, current_res['scores'])
+            kl_div_v = float(scipy.stats.entropy(cur_scores_gt, current_res['scores']))
             # print(f"kl_div_v: {kl_div_v}")
             kl_div_v_max = max(kl_div_v_max, kl_div_v)
             kl_div_v_min = min(kl_div_v_min, kl_div_v)
             kl_div_v_list.append(kl_div_v)
         
         kl_div_v_avg = sum(kl_div_v_list) / len(kl_div_v_list)
-        print(f"max: {kl_div_v_max}")
-        print(f"min: {kl_div_v_min}")
-        print(f"average: {kl_div_v_avg}")
+        # print(f"max: {kl_div_v_max}")
+        # print(f"min: {kl_div_v_min}")
+        # print(f"average: {kl_div_v_avg}")
         dataset_kl_div_v_info_dict['min'].append(kl_div_v_min)
         dataset_kl_div_v_info_dict['max'].append(kl_div_v_max)
         dataset_kl_div_v_info_dict['avg'].append(kl_div_v_avg)
-        # if len(result_list) >= max_count:
-            # break
+        if len(dataset_kl_div_v_info_dict['avg']) >= max_count:
+            break
 
      
     print(f"max: {sum(dataset_kl_div_v_info_dict['max']) / len(dataset_kl_div_v_info_dict['max'])}")
     print(f"min: {sum(dataset_kl_div_v_info_dict['min']) / len(dataset_kl_div_v_info_dict['min'])}")
     print(f"average: {sum(dataset_kl_div_v_info_dict['avg']) / len(dataset_kl_div_v_info_dict['avg'])}")
+
+    with open(save_file_path, 'w') as f:
+        json.dump(dataset_kl_div_v_info_dict, f)
 
 def main():
     parser = ArgumentParser()
