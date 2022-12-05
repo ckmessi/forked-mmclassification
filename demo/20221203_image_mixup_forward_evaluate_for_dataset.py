@@ -94,7 +94,7 @@ def build_source_train_mixed_img():
     return source_train_mixed_img
 
 
-def evaluate_for_dataset(model, dataset_root: str, max_count=999999):
+def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmda=1.0):
     # read source_train_image
     source_train_mixed_img = build_source_train_mixed_img()
     
@@ -113,14 +113,14 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999):
 
     print(f"Collect image paths to forward finished.")
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 128
     for idx in tqdm(range(0, len(forward_result_list_to_perform), BATCH_SIZE)):
         batch_data = forward_result_list_to_perform[idx: idx+BATCH_SIZE]
         # TODO: add img_target correctly
         img_path_list = [fr.file_path for fr in batch_data]
         gt_label_int_list = [fr.gt_label_int for fr in batch_data]
 
-        pred_results_dict = inference_model_for_softmax(model, img_path_list, source_train_mixed_img, mixup_labmda=1.0)
+        pred_results_dict = inference_model_for_softmax(model, img_path_list, source_train_mixed_img, mixup_labmda=mixup_labmda)
 
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
@@ -135,8 +135,17 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999):
     accuracy = correct_count / total_count
     
     print(f'Accuracy is: {accuracy}')
+    return accuracy
 
 
+def draw_plot_lines(evaluated_result_list):
+    import matplotlib.pyplot as plt
+    x = [v['mixup_labmda'] for v in evaluated_result_list]
+    y = [v['accuracy'] for v in evaluated_result_list]
+    plt.plot(x, y, linewidth=1, color='orange', marker="o", label="Accuracy")
+    plt.xticks(x)
+    plt.grid()
+    plt.savefig("temp.png")
 
 
 def main():
@@ -152,7 +161,20 @@ def main():
     # build the model from a config file and a checkpoint file
     model = init_model(args.config, args.checkpoint, device=args.device)
 
+    # evaluate once
     evaluate_for_dataset(model, args.dataset_root)
+
+    # evaluate many times
+    evaluated_result_list = []
+    for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+        accuracy = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
+        evaluated_result_list.append({
+            'mixup_labmda': mixup_labmda,
+            'accuracy': accuracy
+        })
+    print(evaluated_result_list)
+    draw_plot_lines(evaluated_result_list)
+
 
 
 if __name__ == '__main__':
