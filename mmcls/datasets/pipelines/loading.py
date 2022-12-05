@@ -89,7 +89,8 @@ class LoadImageFromMixupFile(object):
         if results['img_prefix'] is not None:
             filename = osp.join(results['img_prefix'],
                                 results['img_info']['filename'])
-                                
+            
+            # TODO: recover previous img_target logic at commit 458847413314086f82f06b67e419cba99fe9ecd8
             source_train_mixed_img = osp.join(results['img_prefix'],
                                 results['img_info']['source_train_mixed_img'])
         else:
