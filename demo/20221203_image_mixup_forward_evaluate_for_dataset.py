@@ -33,11 +33,11 @@ def inference_model_for_softmax(model, imgs, img_target):
     test_pipeline = Compose(cfg.data.test.pipeline)
     test_input_data = [
         test_pipeline(
-            dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=0.5))
+            dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=1.0))
         )
         for img in imgs
     ]
-    data = collate(test_input_data, samples_per_gpu=2)
+    data = collate(test_input_data, samples_per_gpu=len(test_input_data))
     if next(model.parameters()).is_cuda:
         # scatter to specified GPU
         data = scatter(data, [device])[0]
@@ -67,6 +67,9 @@ class ForwardResult:
         self.pred_score = pred_score
         self.pred_scores = pred_scores
 
+    def __repr__(self):
+        return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}"
+
 
 def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999):
 
@@ -85,17 +88,21 @@ def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999)
 
     print(f"Collect image paths to forward finished.")
 
-    for fr in tqdm(forward_result_list_to_perform):
+    batch_size = 16
+    for idx in tqdm(range(0, len(forward_result_list_to_perform), batch_size)):
+        batch_data = forward_result_list_to_perform[idx: idx+batch_size]
         # TODO: add img_target correctly
-        img_path = fr.file_path
-        gt_label_int = fr.gt_label_int
+        img_path_list = [fr.file_path for fr in batch_data]
+        gt_label_int_list = [fr.gt_label_int for fr in batch_data]
 
-        pred_results_dict = inference_model_for_softmax(model, [img_path], img_path)
-        pred_label_int = int(pred_results_dict['pred_label'][0])
-        pred_score = float(pred_results_dict['pred_score'][0])
-        pred_scores = pred_results_dict['scores'][0].tolist()
-        fr = ForwardResult(img_path, gt_label_int, pred_label_int, pred_score, pred_scores)
-        fr_list.append(fr)
+        pred_results_dict = inference_model_for_softmax(model, img_path_list, img_path_list[0])
+
+        pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
+        pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
+        pred_scores_list = [p.tolist() for p in pred_results_dict['scores']]
+
+        cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list)]
+        fr_list.extend(cur_fr_list)
 
     # calculate
     total_count = len(fr_list)
