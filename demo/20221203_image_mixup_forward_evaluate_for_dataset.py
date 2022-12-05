@@ -14,7 +14,7 @@ from mmcv.parallel import collate, scatter
 from mmcls.models.utils.augment import BatchMixupLayer
 
 
-def inference_model_for_softmax(model, img, img_target):
+def inference_model_for_softmax(model, imgs, img_target):
     """Inference image(s) with the classifier.
 
     """
@@ -24,16 +24,20 @@ def inference_model_for_softmax(model, img, img_target):
     # prepare for mixup 
 
     # build the data pipeline
-    if isinstance(img, str):
-        if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromMixupFile':
-            cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromMixupFile'))
-        data = dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=0.5))
-    else:
-        raise ValueError(f"Unexcepted branch")
+    assert len(imgs) > 0, f"Unexcepted empty imgs."
+
+    
+    if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromMixupFile':
+        cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromMixupFile'))
 
     test_pipeline = Compose(cfg.data.test.pipeline)
-    data = test_pipeline(data)
-    data = collate([data], samples_per_gpu=1)
+    test_input_data = [
+        test_pipeline(
+            dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=0.5))
+        )
+        for img in imgs
+    ]
+    data = collate(test_input_data, samples_per_gpu=2)
     if next(model.parameters()).is_cuda:
         # scatter to specified GPU
         data = scatter(data, [device])[0]
@@ -54,7 +58,7 @@ class ForwardResult:
     pred_label_int: int
     file_path: str
     pred_score: float
-    pred_scores: float
+    pred_scores: list
 
     def __init__(self, file_path, gt_label_int, pred_label_int, pred_score, pred_scores):
         self.file_path = file_path
@@ -68,19 +72,31 @@ def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999)
 
     fr_list = []
     cls_names = os.listdir(dataset_root)
+    forward_result_list_to_perform = []
     for cls_name in cls_names:
         cls_dir_path = os.path.join(dataset_root, cls_name)
         cls_dir_file_names = os.listdir(cls_dir_path)
         for cls_dir_file_name in tqdm(cls_dir_file_names):
             img_path = os.path.join(cls_dir_path, cls_dir_file_name)
-            # TODO: add img_target correctly
-            pred_results_dict = inference_model_for_softmax(model, img_path, img_path)
-            pred_label_int = int(pred_results_dict['pred_label'][0])
-            pred_score = float(pred_results_dict['pred_score'][0])
-            pred_scores = pred_results_dict['scores'][0].tolist()
-            fr = ForwardResult("", int(cls_name), pred_label_int, pred_score, pred_scores)
-            fr_list.append(fr)
-    
+            gt_label_int = int(cls_name)
+            fr = ForwardResult(img_path, gt_label_int, 0, 0, [])
+            forward_result_list_to_perform.append(fr)
+
+
+    print(f"Collect image paths to forward finished.")
+
+    for fr in tqdm(forward_result_list_to_perform):
+        # TODO: add img_target correctly
+        img_path = fr.file_path
+        gt_label_int = fr.gt_label_int
+
+        pred_results_dict = inference_model_for_softmax(model, [img_path], img_path)
+        pred_label_int = int(pred_results_dict['pred_label'][0])
+        pred_score = float(pred_results_dict['pred_score'][0])
+        pred_scores = pred_results_dict['scores'][0].tolist()
+        fr = ForwardResult(img_path, gt_label_int, pred_label_int, pred_score, pred_scores)
+        fr_list.append(fr)
+
     # calculate
     total_count = len(fr_list)
     correct_count = len(list(filter(lambda x: x.gt_label_int == x.pred_label_int, fr_list)))
