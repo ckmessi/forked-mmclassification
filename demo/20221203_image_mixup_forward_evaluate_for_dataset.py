@@ -132,6 +132,9 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
         pred_scores_list = [p.tolist() for p in pred_results_dict['scores']]
         recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_labmda) for p in pred_results_dict['scores']]
+        print(f"pred_scores_list: {pred_scores_list}")
+        print(f"recovered_scores_list: {recovered_scores_list}")
+        exit()
 
         cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
         fr_list.extend(cur_fr_list)
@@ -159,6 +162,20 @@ def draw_plot_lines(evaluated_result_list):
     plt.savefig("temp.png")
 
 
+
+def evaluate_for_different_mixup_labmda(model, args):
+    evaluated_result_list = []
+    for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+        eval_result = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
+        evaluated_result_list.append({
+            'mixup_labmda': mixup_labmda,
+            'accuracy': eval_result['accuracy'],
+            'accuracy_by_recovered_scores': eval_result['accuracy_by_recovered_scores'],
+        })
+    print(evaluated_result_list)
+    draw_plot_lines(evaluated_result_list)
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument('dataset_root', help='Dataset Root')
@@ -173,19 +190,11 @@ def main():
     model = init_model(args.config, args.checkpoint, device=args.device)
 
     # evaluate once
-    # evaluate_for_dataset(model, args.dataset_root)
+    evaluate_for_dataset(model, args.dataset_root)
 
     # evaluate many times
-    evaluated_result_list = []
-    for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
-        eval_result = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
-        evaluated_result_list.append({
-            'mixup_labmda': mixup_labmda,
-            'accuracy': eval_result['accuracy'],
-            'accuracy_by_recovered_scores': eval_result['accuracy_by_recovered_scores'],
-        })
-    print(evaluated_result_list)
-    draw_plot_lines(evaluated_result_list)
+    evaluate_for_different_mixup_labmda(model, args)
+    
 
 
 
