@@ -90,23 +90,20 @@ class LoadImageFromMixupFile(object):
             filename = osp.join(results['img_prefix'],
                                 results['img_info']['filename'])
                                 
-            filename_target = osp.join(results['img_prefix'],
-                                results['img_info']['filename_target'])
+            source_train_mixed_img = osp.join(results['img_prefix'],
+                                results['img_info']['source_train_mixed_img'])
         else:
             filename = results['img_info']['filename']
-            filename_target = results['img_info']['filename_target']
+            source_train_mixed_img = results['img_info']['source_train_mixed_img']
 
         img_bytes = self.file_client.get(filename)
         img = mmcv.imfrombytes(img_bytes, flag=self.color_type)
         if self.to_float32:
             img = img.astype(np.float32)
         
-        # print(f"filename_target: {filename_target}")
-        img_target_bytes = self.file_client.get(filename_target)
-        img_target = mmcv.imfrombytes(img_target_bytes, flag=self.color_type)
         if self.to_float32:
-            img_target = img_target.astype(np.float32)
-        img_target = cv2.resize(img_target, (img.shape[1], img.shape[0]))
+            source_train_mixed_img = source_train_mixed_img.astype(np.float32)
+        source_train_mixed_img = cv2.resize(source_train_mixed_img, (img.shape[1], img.shape[0]))
         
         # mixup
         if 'lam' in results['mixup_info']:
@@ -115,7 +112,7 @@ class LoadImageFromMixupFile(object):
             alpha = results['mixup_info']['alpha']
             lam = np.random.beta(alpha, alpha)
         # print(f"lambda is {lam}")
-        mixed_img = lam * img + (1 - lam) * img_target
+        mixed_img = lam * img + (1 - lam) * source_train_mixed_img
 
         img = mixed_img
 

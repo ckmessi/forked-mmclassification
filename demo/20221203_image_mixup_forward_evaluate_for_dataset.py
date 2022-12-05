@@ -6,6 +6,7 @@ from mmcls.apis import init_model, show_result_pyplot
 import os
 import json
 from tqdm import tqdm
+import cv2
 
 import numpy as np
 import torch
@@ -14,7 +15,7 @@ from mmcv.parallel import collate, scatter
 from mmcls.models.utils.augment import BatchMixupLayer
 
 
-def inference_model_for_softmax(model, imgs, img_target):
+def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_labmda=1.0):
     """Inference image(s) with the classifier.
 
     """
@@ -33,7 +34,7 @@ def inference_model_for_softmax(model, imgs, img_target):
     test_pipeline = Compose(cfg.data.test.pipeline)
     test_input_data = [
         test_pipeline(
-            dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=1.0))
+            dict(img_info=dict(filename=img, source_train_mixed_img=source_train_mixed_img), img_prefix=None, mixup_info=dict(lam=mixup_labmda))
         )
         for img in imgs
     ]
@@ -71,7 +72,32 @@ class ForwardResult:
         return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}"
 
 
-def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999):
+def build_source_train_mixed_img():
+    source_train_image_paths = [
+        'data/cifar10/train_split/0/10008_airplane.png',
+        'data/cifar10/train_split/1/10000_automobile.png',
+        'data/cifar10/train_split/2/10018_bird.png',
+        'data/cifar10/train_split/3/10005_cat.png',
+        'data/cifar10/train_split/4/10006_deer.png',
+        'data/cifar10/train_split/5/10014_dog.png',
+        'data/cifar10/train_split/6/0_frog.png',
+        'data/cifar10/train_split/7/10028_horse.png',
+        'data/cifar10/train_split/8/10003_ship.png',
+        'data/cifar10/train_split/9/1000_truck.png',
+    ]
+    source_train_imgs = [cv2.imread(p) for p in source_train_image_paths]
+    source_train_mixed_img = 0.0 * source_train_imgs[0]
+    for source_train_img in source_train_imgs:
+        source_train_mixed_img += 1 / len(source_train_imgs) * source_train_img
+    # cv2.imwrite("temp.png", source_train_mixed_img)
+    # exit()
+    return source_train_mixed_img
+
+
+def evaluate_for_dataset(model, dataset_root: str, max_count=999999):
+    # read source_train_image
+    source_train_mixed_img = build_source_train_mixed_img()
+    
 
     fr_list = []
     cls_names = os.listdir(dataset_root)
@@ -85,17 +111,16 @@ def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999)
             fr = ForwardResult(img_path, gt_label_int, 0, 0, [])
             forward_result_list_to_perform.append(fr)
 
-
     print(f"Collect image paths to forward finished.")
 
-    BATCH_SIZE = 16
+    BATCH_SIZE = 32
     for idx in tqdm(range(0, len(forward_result_list_to_perform), BATCH_SIZE)):
         batch_data = forward_result_list_to_perform[idx: idx+BATCH_SIZE]
         # TODO: add img_target correctly
         img_path_list = [fr.file_path for fr in batch_data]
         gt_label_int_list = [fr.gt_label_int for fr in batch_data]
 
-        pred_results_dict = inference_model_for_softmax(model, img_path_list, img_path_list[0])
+        pred_results_dict = inference_model_for_softmax(model, img_path_list, source_train_mixed_img, mixup_labmda=1.0)
 
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
@@ -127,7 +152,7 @@ def main():
     # build the model from a config file and a checkpoint file
     model = init_model(args.config, args.checkpoint, device=args.device)
 
-    evaluate_for_dataset(model, args.dataset_root, args.img_target)
+    evaluate_for_dataset(model, args.dataset_root)
 
 
 if __name__ == '__main__':
