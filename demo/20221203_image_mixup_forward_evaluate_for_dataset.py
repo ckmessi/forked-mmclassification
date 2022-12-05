@@ -41,10 +41,11 @@ def inference_model_for_softmax(model, img, img_target):
     # forward the model
     with torch.no_grad():
         scores = model(return_loss=False, **data)
-        pred_score = np.max(scores, axis=1)[0]
-        pred_label = np.argmax(scores, axis=1)[0]
-        result = {'pred_label': pred_label, 'pred_score': float(pred_score), 'scores': scores[0]}
-    result['pred_class'] = model.CLASSES[result['pred_label']]
+        pred_score = np.max(scores, axis=1)
+        pred_label = np.argmax(scores, axis=1)
+        result = {'pred_label': pred_label, 'pred_score': pred_score, 'scores': scores}
+    
+    # result['pred_class'] = model.CLASSES[result['pred_label']]
     return result
 
 
@@ -73,11 +74,10 @@ def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999)
         for cls_dir_file_name in tqdm(cls_dir_file_names):
             img_path = os.path.join(cls_dir_path, cls_dir_file_name)
             # TODO: add img_target correctly
-            res = inference_model_for_softmax(model, img_path, img_path)
-            # format the res
-            pred_label_int = int(res['pred_label'])
-            pred_score = float(res['pred_score'])
-            pred_scores = res['scores'].tolist()
+            pred_results_dict = inference_model_for_softmax(model, img_path, img_path)
+            pred_label_int = int(pred_results_dict['pred_label'][0])
+            pred_score = float(pred_results_dict['pred_score'][0])
+            pred_scores = pred_results_dict['scores'][0].tolist()
             fr = ForwardResult("", int(cls_name), pred_label_int, pred_score, pred_scores)
             fr_list.append(fr)
     
