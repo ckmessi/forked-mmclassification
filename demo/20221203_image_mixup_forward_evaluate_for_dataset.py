@@ -24,21 +24,12 @@ def inference_model_for_softmax(model, img, img_target):
     # prepare for mixup 
 
     # build the data pipeline
-    # if isinstance(img, str):
-    #     if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromMixupFile':
-    #         cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromMixupFile'))
-    #     data = dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=0.5))
-    # else:
-    #     raise ValueError(f"Unexcepted branch")
-        
     if isinstance(img, str):
-        if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromFile':
-            cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromFile'))
-        data = dict(img_info=dict(filename=img), img_prefix=None)
+        if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromMixupFile':
+            cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromMixupFile'))
+        data = dict(img_info=dict(filename=img, filename_target=img_target), img_prefix=None, mixup_info=dict(lam=0.5))
     else:
-        if cfg.data.test.pipeline[0]['type'] == 'LoadImageFromFile':
-            cfg.data.test.pipeline.pop(0)
-        data = dict(img=img)
+        raise ValueError(f"Unexcepted branch")
 
     test_pipeline = Compose(cfg.data.test.pipeline)
     data = test_pipeline(data)
