@@ -88,9 +88,9 @@ def evaluate_for_dataset(model, dataset_root: str, img_target, max_count=999999)
 
     print(f"Collect image paths to forward finished.")
 
-    batch_size = 16
-    for idx in tqdm(range(0, len(forward_result_list_to_perform), batch_size)):
-        batch_data = forward_result_list_to_perform[idx: idx+batch_size]
+    BATCH_SIZE = 16
+    for idx in tqdm(range(0, len(forward_result_list_to_perform), BATCH_SIZE)):
+        batch_data = forward_result_list_to_perform[idx: idx+BATCH_SIZE]
         # TODO: add img_target correctly
         img_path_list = [fr.file_path for fr in batch_data]
         gt_label_int_list = [fr.gt_label_int for fr in batch_data]
