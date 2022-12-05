@@ -60,7 +60,8 @@ def forward_for_scores(input_img):
     return [1.0, 0.0, 0.0]
 
 
-def test_forward_for_scores(input_img):
+@pytest.mark.skip(reason='run by manual')
+def test_forward_for_scores():
     raise NotImplementedError(f'This test not implemented')
 
 
@@ -106,7 +107,7 @@ def forward_for_mixup_scores(input_img, train_images_info: List[ImageInfo], sour
 
 
 
-def calculate_recovered_scores(train_image_infos, scores1, num_classes=5, source_ratio=0.3):
+def calculate_recovered_scores_for_train_image_infos(train_image_infos, scores1, num_classes=5, source_ratio=0.3):
     """
     给定 {待测图像} 和 {训练图像+标签}，以及获得的输出值
     返回正常的 scores0'（即 input_img 所隐含的成份） 
@@ -131,34 +132,82 @@ def calculate_recovered_scores(train_image_infos, scores1, num_classes=5, source
     return recovered_scores
 
 
-def test_calculate_recovered_scores():
+def test_calculate_recovered_scores_for_train_image_infos():
     # for extereme info
     train_images_info = [ImageInfo(None, 1, 5)]
     scores1 = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
-    recovered_scores = calculate_recovered_scores(train_images_info, scores1, 5, 0.0)
+    recovered_scores = calculate_recovered_scores_for_train_image_infos(train_images_info, scores1, 5, 0.0)
     assert (recovered_scores == scores1).all()
     
     train_images_info = [ImageInfo(None, 1, 5)]
     scores1 = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
     with pytest.raises(ValueError, match='source_ratio is larger than 1.0'):
-        recovered_scores = calculate_recovered_scores(train_images_info, scores1, 5, 1.0)
+        recovered_scores = calculate_recovered_scores_for_train_image_infos(train_images_info, scores1, 5, 1.0)
 
     # normal scene
     train_images_info = [ImageInfo(None, 1, 5)]
     scores1 = np.array([0.5, 0.5, 0.0, 0.0, 0.0])
-    recovered_scores = calculate_recovered_scores(train_images_info, scores1, 5, 0.5)
+    recovered_scores = calculate_recovered_scores_for_train_image_infos(train_images_info, scores1, 5, 0.5)
     assert (recovered_scores == np.array([1.0, 0.0, 0.0, 0.0, 0.0])).all()
     
     train_images_info = [ImageInfo(None, 1, 5)]
     scores1 = np.array([0.2, 0.8, 0.0, 0.0, 0.0])
-    recovered_scores = calculate_recovered_scores(train_images_info, scores1, 5, 0.8)
+    recovered_scores = calculate_recovered_scores_for_train_image_infos(train_images_info, scores1, 5, 0.8)
     print(recovered_scores)
     assert compare_array_nearly_equal(recovered_scores, np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
     
     train_images_info = [ImageInfo(None, 1, 5)]
     scores1 = np.array([0.8, 0.2, 0.0, 0.0, 0.0])
-    recovered_scores = calculate_recovered_scores(train_images_info, scores1, 5, 0.2)
+    recovered_scores = calculate_recovered_scores_for_train_image_infos(train_images_info, scores1, 5, 0.2)
     assert compare_array_nearly_equal(recovered_scores, np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
+
+
+def calculate_recovered_scores(train_soft_label, scores1, source_ratio=0.3):
+    if source_ratio == 0.0:
+        return scores1
+    
+    if source_ratio >= 1.0:
+        raise ValueError(f"source_ratio is larger than 1.0, expected 0.0 <= source_ratio <= 1.0, {source_ratio} got.")
+    
+    """
+    (1 - source_ratio) * scores0' + source_ratio * train_soft_label = scores1
+    ->
+    scores0' = (scores1 - source_ratio * train_soft_label) / (1-source_ratio)
+    """
+    recovered_scores = (scores1 - source_ratio * train_soft_label) / (1 - source_ratio)
+    return recovered_scores
+
+
+def test_calculate_recovered_scores():
+    # for extereme info
+    train_soft_label = np.array([0, 1, 0, 0, 0])
+    scores1 = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
+    recovered_scores = calculate_recovered_scores(train_soft_label, scores1, 5, 0.0)
+    assert (recovered_scores == scores1).all()
+    
+    train_soft_label = np.array([0, 1, 0, 0, 0])
+    scores1 = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
+    with pytest.raises(ValueError, match='source_ratio is larger than 1.0'):
+        recovered_scores = calculate_recovered_scores(train_soft_label, scores1, 5, 1.0)
+
+    # normal scene
+    train_soft_label = np.array([0, 1, 0, 0, 0])
+    scores1 = np.array([0.5, 0.5, 0.0, 0.0, 0.0])
+    recovered_scores = calculate_recovered_scores(train_soft_label, scores1, 5, 0.5)
+    assert (recovered_scores == np.array([1.0, 0.0, 0.0, 0.0, 0.0])).all()
+    
+    
+    train_soft_label = np.array([0, 1, 0, 0, 0])
+    scores1 = np.array([0.2, 0.8, 0.0, 0.0, 0.0])
+    recovered_scores = calculate_recovered_scores(train_soft_label, scores1, 5, 0.8)
+    print(recovered_scores)
+    assert compare_array_nearly_equal(recovered_scores, np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
+    
+    train_soft_label = np.array([0, 1, 0, 0, 0])
+    scores1 = np.array([0.8, 0.2, 0.0, 0.0, 0.0])
+    recovered_scores = calculate_recovered_scores(train_soft_label, scores1, 5, 0.2)
+    assert compare_array_nearly_equal(recovered_scores, np.array([1.0, 0.0, 0.0, 0.0, 0.0]))
+
 
 
 def generate_soft_labels_for_image_infos(train_image_infos, num_classes=1):
@@ -283,3 +332,6 @@ def test_calculate_compositive_scores():
     compositive_scores = calculate_compositive_scores(scores0, scores0_recovered, 1.0)
     assert compare_array_nearly_equal(compositive_scores, scores0) == True
 
+
+if __name__ == "__main__":
+    print("a")

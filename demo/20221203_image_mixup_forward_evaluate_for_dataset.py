@@ -14,6 +14,7 @@ from mmcls.datasets.pipelines import Compose
 from mmcv.parallel import collate, scatter
 from mmcls.models.utils.augment import BatchMixupLayer
 
+from demo.test_time_mixup import test_time_mixup
 
 def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_labmda=1.0):
     """Inference image(s) with the classifier.
@@ -61,15 +62,20 @@ class ForwardResult:
     pred_score: float
     pred_scores: list
 
-    def __init__(self, file_path, gt_label_int, pred_label_int, pred_score, pred_scores):
+    def __init__(self, file_path, gt_label_int, pred_label_int, pred_score, pred_scores, recovered_scores=[]):
         self.file_path = file_path
         self.gt_label_int = gt_label_int
         self.pred_label_int = pred_label_int
         self.pred_score = pred_score
         self.pred_scores = pred_scores
+        self.recovered_scores = recovered_scores
+
+    @property
+    def recovered_label_int(self):
+        return np.argmax(self.recovered_scores, axis=0)
 
     def __repr__(self):
-        return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}"
+        return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}, {self.recovered_scores}"
 
 
 def build_source_train_mixed_img():
@@ -91,13 +97,13 @@ def build_source_train_mixed_img():
         source_train_mixed_img += 1 / len(source_train_imgs) * source_train_img
     # cv2.imwrite("temp.png", source_train_mixed_img)
     # exit()
-    return source_train_mixed_img
+    soft_labels = test_time_mixup.generate_soft_labels(range(10), 10)
+    return source_train_mixed_img, soft_labels
 
 
 def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmda=1.0):
     # read source_train_image
-    source_train_mixed_img = build_source_train_mixed_img()
-    
+    source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
 
     fr_list = []
     cls_names = os.listdir(dataset_root)
@@ -125,24 +131,29 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
         pred_scores_list = [p.tolist() for p in pred_results_dict['scores']]
+        recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_labmda) for p in pred_results_dict['scores']]
 
-        cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list)]
+        cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
         fr_list.extend(cur_fr_list)
 
     # calculate
     total_count = len(fr_list)
     correct_count = len(list(filter(lambda x: x.gt_label_int == x.pred_label_int, fr_list)))
+    correct_count_by_recovered_scores = len(list(filter(lambda x: x.gt_label_int == x.recovered_label_int, fr_list)))
     accuracy = correct_count / total_count
+    accuracy_by_recovered_scores = correct_count_by_recovered_scores / total_count
     
-    print(f'Accuracy is: {accuracy}')
-    return accuracy
+    print(f'Accuracy is: {accuracy}, Accuracy_by_recovered_scores: {accuracy_by_recovered_scores}')
+    return {'accuracy': accuracy, 'accuracy_by_recovered_scores': accuracy_by_recovered_scores}
 
 
 def draw_plot_lines(evaluated_result_list):
     import matplotlib.pyplot as plt
     x = [v['mixup_labmda'] for v in evaluated_result_list]
     y = [v['accuracy'] for v in evaluated_result_list]
+    y_recovered = [v['accuracy_by_recovered_scores'] for v in evaluated_result_list]
     plt.plot(x, y, linewidth=1, color='orange', marker="o", label="Accuracy")
+    plt.plot(x, y_recovered, linewidth=1, color='green', marker="d", label="Accuracy by Recorvered")
     plt.xticks(x)
     plt.grid()
     plt.savefig("temp.png")
@@ -162,15 +173,16 @@ def main():
     model = init_model(args.config, args.checkpoint, device=args.device)
 
     # evaluate once
-    evaluate_for_dataset(model, args.dataset_root)
+    # evaluate_for_dataset(model, args.dataset_root)
 
     # evaluate many times
     evaluated_result_list = []
     for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
-        accuracy = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
+        eval_result = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
         evaluated_result_list.append({
             'mixup_labmda': mixup_labmda,
-            'accuracy': accuracy
+            'accuracy': eval_result['accuracy'],
+            'accuracy_by_recovered_scores': eval_result['accuracy_by_recovered_scores'],
         })
     print(evaluated_result_list)
     draw_plot_lines(evaluated_result_list)
