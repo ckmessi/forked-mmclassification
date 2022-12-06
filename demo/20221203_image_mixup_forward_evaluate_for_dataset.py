@@ -60,7 +60,9 @@ class ForwardResult:
     pred_label_int: int
     file_path: str
     pred_score: float
-    pred_scores: list
+    pred_scores: np.ndarray
+    recovered_scores: np.ndarray
+
 
     def __init__(self, file_path, gt_label_int, pred_label_int, pred_score, pred_scores, recovered_scores=[]):
         self.file_path = file_path
@@ -73,6 +75,14 @@ class ForwardResult:
     @property
     def recovered_label_int(self):
         return np.argmax(self.recovered_scores, axis=0)
+
+
+    def calculate_compositive_label_int(self, alpha=1.0):
+        compositive_scores = self.calculate_compositive_scores(alpha)
+        return np.argmax(compositive_scores, axis=0)
+
+    def calculate_compositive_scores(self, alpha=1.0):
+        return test_time_mixup.calculate_compositive_scores(self.pred_scores, self.recovered_scores, lambda_value=alpha)
 
     def __repr__(self):
         return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}, {self.recovered_scores}"
@@ -119,7 +129,7 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
 
     print(f"Collect image paths to forward finished.")
 
-    BATCH_SIZE = 128
+    BATCH_SIZE = 32
     for idx in tqdm(range(0, len(forward_result_list_to_perform), BATCH_SIZE)):
         batch_data = forward_result_list_to_perform[idx: idx+BATCH_SIZE]
         # TODO: add img_target correctly
@@ -130,11 +140,8 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
 
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
-        pred_scores_list = [p.tolist() for p in pred_results_dict['scores']]
+        pred_scores_list = [p for p in pred_results_dict['scores']]
         recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_labmda) for p in pred_results_dict['scores']]
-        print(f"pred_scores_list: {pred_scores_list}")
-        print(f"recovered_scores_list: {recovered_scores_list}")
-        exit()
 
         cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
         fr_list.extend(cur_fr_list)
@@ -146,8 +153,15 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
     accuracy = correct_count / total_count
     accuracy_by_recovered_scores = correct_count_by_recovered_scores / total_count
     
-    print(f'Accuracy is: {accuracy}, Accuracy_by_recovered_scores: {accuracy_by_recovered_scores}')
-    return {'accuracy': accuracy, 'accuracy_by_recovered_scores': accuracy_by_recovered_scores}
+    correct_count_by_compositive_scores_list = [
+        len(list(filter(lambda x: x.gt_label_int == x.calculate_compositive_label_int(alpha), fr_list)))
+        for alpha in np.arange(0.1, 1.0, 0.1)
+    ]
+    accuracy_by_compositive_scores_list = [
+        (count / total_count) for count in correct_count_by_compositive_scores_list
+    ]
+    
+    return {'accuracy': accuracy, 'accuracy_by_recovered_scores': accuracy_by_recovered_scores, 'accuracy_by_compositive_scores_list': accuracy_by_compositive_scores_list}
 
 
 def draw_plot_lines(evaluated_result_list):
@@ -190,10 +204,11 @@ def main():
     model = init_model(args.config, args.checkpoint, device=args.device)
 
     # evaluate once
-    evaluate_for_dataset(model, args.dataset_root)
+    eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=0.8)
+    print(eval_res)
 
     # evaluate many times
-    evaluate_for_different_mixup_labmda(model, args)
+    # evaluate_for_different_mixup_labmda(model, args)
     
 
 

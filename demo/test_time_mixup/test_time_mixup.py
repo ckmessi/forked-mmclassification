@@ -16,6 +16,15 @@ class ImageInfo:
         self.label = label
         self.num_classes = num_classes
 
+
+def softmax(x):
+    """Compute the softmax in a numerically stable way."""
+    x = x - np.max(x)
+    exp_x = np.exp(x)
+    softmax_x = exp_x / np.sum(exp_x)
+    return softmax_x
+
+
 def compare_array_nearly_equal(np_arr1, np_arr2):
     if np_arr1.shape[0] != np_arr2.shape[0]:
         return False
@@ -321,7 +330,9 @@ def calculate_compositive_scores(scores0, scores0_recovered, lambda_value):
 
     s = lambda_value * scores0 + (1-lambda_value) * (1-kl_div) * scores0_recovered
     """
-    kl_div = calculate_kl_div(scores0, scores0_recovered)
+    kl_div = calculate_kl_div(softmax(scores0), softmax(scores0_recovered))
+    if kl_div == inf:
+        raise ValueError(f"Unexpected kl_div value: {kl_div}, scores0: {scores0}, scores0_recovered: {scores0_recovered}")
     compositive_scores = lambda_value * scores0 + (1 - lambda_value) * (1 - kl_div) * scores0_recovered
     return compositive_scores
 
