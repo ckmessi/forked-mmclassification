@@ -7,7 +7,7 @@ import os
 import json
 from tqdm import tqdm
 import cv2
-
+import tabulate
 import numpy as np
 import torch
 from mmcls.datasets.pipelines import Compose
@@ -28,7 +28,8 @@ def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_labmd
     # build the data pipeline
     assert len(imgs) > 0, f"Unexcepted empty imgs."
 
-    
+    if cfg.data.test.pipeline[0]['type'] == 'LoadImageFromFile':
+        cfg.data.test.pipeline.pop(0)
     if cfg.data.test.pipeline[0]['type'] != 'LoadImageFromMixupFile':
         cfg.data.test.pipeline.insert(0, dict(type='LoadImageFromMixupFile'))
 
@@ -88,7 +89,18 @@ class ForwardResult:
         return test_time_mixup.calculate_compositive_scores(self.pred_scores, self.recovered_scores, lambda_value=alpha)
 
     def __repr__(self):
-        return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}, {self.recovered_scores}"
+        table_data = [
+            ['file_path', self.file_path],
+            ['gt_label_int', self.gt_label_int],
+            ['pred_label_int', self.pred_label_int],
+            ['pred_score', self.pred_score],
+            ['pred_scores', self.pred_scores],
+            ['recovered_scores', self.recovered_scores],
+            ['softmax(recovered_scores)', test_time_mixup.softmax(self.recovered_scores)],
+            ['kl_div_between_p_and_r', self.kl_div_between_pred_scores_and_recovered_scores],
+        ]
+        return tabulate.tabulate(table_data)
+        # return f"{self.file_path}, {self.gt_label_int}, {self.pred_label_int}, {self.pred_score}, {self.pred_scores}, {self.recovered_scores}"
 
 
 def build_source_train_mixed_img():
@@ -110,13 +122,17 @@ def build_source_train_mixed_img():
         source_train_mixed_img += 1 / len(source_train_imgs) * source_train_img
     # cv2.imwrite("temp.png", source_train_mixed_img)
     # exit()
-    soft_labels = test_time_mixup.generate_soft_labels(range(10), 10)
+
+    soft_labels = test_time_mixup.generate_soft_labels([0], 10)
+    
     return source_train_mixed_img, soft_labels
 
 
 def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmda=1.0):
     # read source_train_image
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
+    # cv2.imwrite("source_train_mixed_img.jpg", source_train_mixed_img)
+    # print(f"train_soft_label: {train_soft_label}")
 
     fr_list = []
     cls_names = os.listdir(dataset_root)
@@ -166,6 +182,7 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
     kl_div_list = [
         fr.kl_div_between_pred_scores_and_recovered_scores for fr in fr_list
     ]
+    # print(fr_list)
     average_kl_dev = sum(kl_div_list) / len(kl_div_list)
     
     return {
