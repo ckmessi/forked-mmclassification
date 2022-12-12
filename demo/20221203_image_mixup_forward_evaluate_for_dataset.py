@@ -91,15 +91,15 @@ class ForwardResult:
 def build_source_train_mixed_img():
     source_train_image_paths = [
         'data/cifar10/train_split/0/10008_airplane.png',
-        'data/cifar10/train_split/1/10000_automobile.png',
-        'data/cifar10/train_split/2/10018_bird.png',
-        'data/cifar10/train_split/3/10005_cat.png',
-        'data/cifar10/train_split/4/10006_deer.png',
-        'data/cifar10/train_split/5/10014_dog.png',
-        'data/cifar10/train_split/6/0_frog.png',
-        'data/cifar10/train_split/7/10028_horse.png',
-        'data/cifar10/train_split/8/10003_ship.png',
-        'data/cifar10/train_split/9/1000_truck.png',
+        # 'data/cifar10/train_split/1/10000_automobile.png',
+        # 'data/cifar10/train_split/2/10018_bird.png',
+        # 'data/cifar10/train_split/3/10005_cat.png',
+        # 'data/cifar10/train_split/4/10006_deer.png',
+        # 'data/cifar10/train_split/5/10014_dog.png',
+        # 'data/cifar10/train_split/6/0_frog.png',
+        # 'data/cifar10/train_split/7/10028_horse.png',
+        # 'data/cifar10/train_split/8/10003_ship.png',
+        # 'data/cifar10/train_split/9/1000_truck.png',
     ]
     source_train_imgs = [cv2.imread(p) for p in source_train_image_paths]
     source_train_mixed_img = 0.0 * source_train_imgs[0]
@@ -179,7 +179,8 @@ def draw_plot_lines(evaluated_result_list):
 
 def evaluate_for_different_mixup_labmda(model, args):
     evaluated_result_list = []
-    for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+    # for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+    for mixup_labmda in [0.8, 0.9, 1.0]:
         eval_result = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
         evaluated_result_list.append({
             'mixup_labmda': mixup_labmda,
@@ -193,7 +194,6 @@ def evaluate_for_different_mixup_labmda(model, args):
 def main():
     parser = ArgumentParser()
     parser.add_argument('dataset_root', help='Dataset Root')
-    parser.add_argument('img_target', help='Target Image file')
     parser.add_argument('config', help='Config file')
     parser.add_argument('checkpoint', help='Checkpoint file')
     parser.add_argument(
@@ -204,11 +204,11 @@ def main():
     model = init_model(args.config, args.checkpoint, device=args.device)
 
     # evaluate once
-    eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=0.8)
-    print(eval_res)
+    # eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=0.8)
+    # print(eval_res)
 
     # evaluate many times
-    # evaluate_for_different_mixup_labmda(model, args)
+    evaluate_for_different_mixup_labmda(model, args)
     
 
 
