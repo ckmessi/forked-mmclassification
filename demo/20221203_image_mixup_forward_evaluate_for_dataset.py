@@ -16,7 +16,7 @@ from mmcls.models.utils.augment import BatchMixupLayer
 
 from demo.test_time_mixup import test_time_mixup
 
-def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_labmda=1.0):
+def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_lambda=1.0):
     """Inference image(s) with the classifier.
 
     """
@@ -36,7 +36,7 @@ def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_labmd
     test_pipeline = Compose(cfg.data.test.pipeline)
     test_input_data = [
         test_pipeline(
-            dict(img_info=dict(filename=img, source_train_mixed_img=source_train_mixed_img), img_prefix=None, mixup_info=dict(lam=mixup_labmda))
+            dict(img_info=dict(filename=img, source_train_mixed_img=source_train_mixed_img), img_prefix=None, mixup_info=dict(lam=mixup_lambda))
         )
         for img in imgs
     ]
@@ -128,7 +128,7 @@ def build_source_train_mixed_img():
     return source_train_mixed_img, soft_labels
 
 
-def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmda=1.0):
+def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_lambda=1.0):
     # read source_train_image
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
     # cv2.imwrite("source_train_mixed_img.jpg", source_train_mixed_img)
@@ -155,12 +155,12 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
         img_path_list = [fr.file_path for fr in batch_data]
         gt_label_int_list = [fr.gt_label_int for fr in batch_data]
 
-        pred_results_dict = inference_model_for_softmax(model, img_path_list, source_train_mixed_img, mixup_labmda=mixup_labmda)
+        pred_results_dict = inference_model_for_softmax(model, img_path_list, source_train_mixed_img, mixup_lambda=mixup_lambda)
 
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
         pred_scores_list = [p for p in pred_results_dict['scores']]
-        recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_labmda) for p in pred_results_dict['scores']]
+        recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_lambda) for p in pred_results_dict['scores']]
 
         cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
         fr_list.extend(cur_fr_list)
@@ -182,7 +182,7 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
     kl_div_list = [
         fr.kl_div_between_pred_scores_and_recovered_scores for fr in fr_list
     ]
-    # print(fr_list)
+    print(fr_list)
     average_kl_dev = sum(kl_div_list) / len(kl_div_list)
     
     return {
@@ -195,7 +195,7 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
 
 def draw_plot_lines(evaluated_result_list):
     import matplotlib.pyplot as plt
-    x = [v['mixup_labmda'] for v in evaluated_result_list]
+    x = [v['mixup_lambda'] for v in evaluated_result_list]
     y = [v['accuracy'] for v in evaluated_result_list]
     y_recovered = [v['accuracy_by_recovered_scores'] for v in evaluated_result_list]
     plt.plot(x, y, linewidth=1, color='orange', marker="o", label="Accuracy")
@@ -206,13 +206,13 @@ def draw_plot_lines(evaluated_result_list):
 
 
 
-def evaluate_for_different_mixup_labmda(model, args):
+def evaluate_for_different_mixup_lambda(model, args):
     evaluated_result_list = []
-    # for mixup_labmda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
-    for mixup_labmda in [0.8, 0.9, 1.0]:
-        eval_result = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=mixup_labmda)
+    # for mixup_lambda in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+    for mixup_lambda in [0.8, 0.9, 1.0]:
+        eval_result = evaluate_for_dataset(model, args.dataset_root, mixup_lambda=mixup_lambda)
         evaluated_result_list.append({
-            'mixup_labmda': mixup_labmda,
+            'mixup_lambda': mixup_lambda,
             'accuracy': eval_result['accuracy'],
             'accuracy_by_recovered_scores': eval_result['accuracy_by_recovered_scores'],
         })
@@ -225,6 +225,7 @@ def main():
     parser.add_argument('dataset_root', help='Dataset Root')
     parser.add_argument('config', help='Config file')
     parser.add_argument('checkpoint', help='Checkpoint file')
+    parser.add_argument('--mixup_lambda', help='mixup_lambda', default=1.0)
     parser.add_argument(
         '--device', default='cuda:0', help='Device used for inference')
     args = parser.parse_args()
@@ -233,11 +234,11 @@ def main():
     model = init_model(args.config, args.checkpoint, device=args.device)
 
     # evaluate once
-    eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=0.8)
+    eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_lambda=float(args.mixup_lambda))
     print(eval_res)
 
     # evaluate many times
-    # evaluate_for_different_mixup_labmda(model, args)
+    # evaluate_for_different_mixup_lambda(model, args)
     
 
 
