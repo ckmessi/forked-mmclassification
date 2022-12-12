@@ -76,6 +76,9 @@ class ForwardResult:
     def recovered_label_int(self):
         return np.argmax(self.recovered_scores, axis=0)
 
+    @property
+    def kl_div_between_pred_scores_and_recovered_scores(self):
+        return test_time_mixup.calculate_kl_div(test_time_mixup.softmax(self.pred_scores), test_time_mixup.softmax(self.recovered_scores))
 
     def calculate_compositive_label_int(self, alpha=1.0):
         compositive_scores = self.calculate_compositive_scores(alpha)
@@ -160,8 +163,17 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_labmd
     accuracy_by_compositive_scores_list = [
         (count / total_count) for count in correct_count_by_compositive_scores_list
     ]
+    kl_div_list = [
+        fr.kl_div_between_pred_scores_and_recovered_scores for fr in fr_list
+    ]
+    average_kl_dev = sum(kl_div_list) / len(kl_div_list)
     
-    return {'accuracy': accuracy, 'accuracy_by_recovered_scores': accuracy_by_recovered_scores, 'accuracy_by_compositive_scores_list': accuracy_by_compositive_scores_list}
+    return {
+        'accuracy': accuracy, 
+        'accuracy_by_recovered_scores': accuracy_by_recovered_scores, 
+        'accuracy_by_compositive_scores_list': accuracy_by_compositive_scores_list,
+        'average_kl_dev': average_kl_dev
+    }
 
 
 def draw_plot_lines(evaluated_result_list):
@@ -204,11 +216,11 @@ def main():
     model = init_model(args.config, args.checkpoint, device=args.device)
 
     # evaluate once
-    # eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=0.8)
-    # print(eval_res)
+    eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_labmda=0.8)
+    print(eval_res)
 
     # evaluate many times
-    evaluate_for_different_mixup_labmda(model, args)
+    # evaluate_for_different_mixup_labmda(model, args)
     
 
 
