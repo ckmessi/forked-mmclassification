@@ -94,8 +94,8 @@ class ForwardResult:
             ['gt_label_int', self.gt_label_int],
             ['pred_label_int', self.pred_label_int],
             ['pred_score', self.pred_score],
-            ['pred_scores', self.pred_scores],
-            ['recovered_scores', self.recovered_scores],
+            ['pred_scores', [round(v, 6) for v in self.pred_scores]],
+            ['recovered_scores', [round(v, 6) for v in self.recovered_scores]],
             ['softmax(recovered_scores)', test_time_mixup.softmax(self.recovered_scores)],
             ['kl_div_between_p_and_r', self.kl_div_between_pred_scores_and_recovered_scores],
         ]
