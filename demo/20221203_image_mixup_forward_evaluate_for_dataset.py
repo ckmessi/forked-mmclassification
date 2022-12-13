@@ -56,6 +56,17 @@ def inference_model_for_softmax(model, imgs, source_train_mixed_img, mixup_lambd
     return result
 
 
+class ForwardResultForMixup:
+    def __init__(self, file_path, mixup_lambda, forward_result):
+        self.file_path = file_path
+        self.mixup_lambda = mixup_lambda
+        self.forward_result = forward_result
+
+
+    def __repr__(self):
+        return f"{self.file_path}, {self.mixup_lambda} \n {self.forward_result}"
+
+
 class ForwardResult:
     gt_label_int: int
     pred_label_int: int
@@ -220,18 +231,50 @@ def evaluate_for_different_mixup_lambda(model, args):
     draw_plot_lines(evaluated_result_list)
 
 
+def forward_for_one_input_image(model, input_image_path: str):
+    # read source_train_image
+    source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
+    
+    fr_for_mixup_list = []
+    for mixup_lambda in np.arange(0.1, 1.0, 0.1):
+        pred_results_dict = inference_model_for_softmax(model, [input_image_path], source_train_mixed_img, mixup_lambda=mixup_lambda)
+        pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
+        gt_label_int_list = [-1 for p in pred_results_dict['pred_label']]
+        pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
+        pred_scores_list = [p for p in pred_results_dict['scores']]
+        img_path_list = [input_image_path]
+        recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_lambda) for p in pred_results_dict['scores']]
+        cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
+        cur_fr_for_mixup_list = [ForwardResultForMixup(input_image_path, mixup_lambda, fr) for fr in cur_fr_list]
+        fr_for_mixup_list.extend(cur_fr_for_mixup_list)
+    
+    print(fr_for_mixup_list)
+    # # analyze for 0.1, 0.5, 0.9
+    # fr_for_mixup_dict = {}
+    # for fr_for_mixup in fr_for_mixup_list:
+    #     fr_for_mixup_dict[fr_for_mixup.mixup_lambda] = fr_for_mixup
+
+
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument('dataset_root', help='Dataset Root')
     parser.add_argument('config', help='Config file')
     parser.add_argument('checkpoint', help='Checkpoint file')
     parser.add_argument('--mixup_lambda', help='mixup_lambda', default=1.0)
+    parser.add_argument('--input_image_path', help='input_image_path', default='')
     parser.add_argument(
         '--device', default='cuda:0', help='Device used for inference')
     args = parser.parse_args()
 
     # build the model from a config file and a checkpoint file
     model = init_model(args.config, args.checkpoint, device=args.device)
+    
+
+    if args.input_image_path:
+        forward_for_one_input_image(model, args.input_image_path)
+        return
 
     # evaluate once
     eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_lambda=float(args.mixup_lambda))
