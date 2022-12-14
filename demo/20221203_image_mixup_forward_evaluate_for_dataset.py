@@ -62,9 +62,22 @@ class ForwardResultForMixup:
         self.mixup_lambda = mixup_lambda
         self.forward_result = forward_result
 
-
     def __repr__(self):
         return f"{self.file_path}, {self.mixup_lambda} \n {self.forward_result}"
+
+    @staticmethod
+    def calculate_original_x(fr_result_for_mixup_1, fr_result_for_mixup_2, train_soft_label):
+        """
+        x = s + (A1 - A2) / (\lam1 - \lam2)
+        """
+        lambda1 = fr_result_for_mixup_1.mixup_lambda
+        lambda2 = fr_result_for_mixup_2.mixup_lambda
+        if lambda1 == lambda2:
+            raise ValueError(f"Unexpected same lambda value for x1 and x2")
+        A1 = fr_result_for_mixup_1.forward_result.pred_scores
+        A2 = fr_result_for_mixup_2.forward_result.pred_scores
+        x = train_soft_label + (A1 - A2) / (lambda1 - lambda2)
+        return x
 
 
 class ForwardResult:
@@ -248,11 +261,48 @@ def forward_for_one_input_image(model, input_image_path: str):
         cur_fr_for_mixup_list = [ForwardResultForMixup(input_image_path, mixup_lambda, fr) for fr in cur_fr_list]
         fr_for_mixup_list.extend(cur_fr_for_mixup_list)
     
-    print(fr_for_mixup_list)
-    # # analyze for 0.1, 0.5, 0.9
-    # fr_for_mixup_dict = {}
-    # for fr_for_mixup in fr_for_mixup_list:
-    #     fr_for_mixup_dict[fr_for_mixup.mixup_lambda] = fr_for_mixup
+    # print(fr_for_mixup_list)
+
+    fr_for_mixup_dict = {}
+    for fr_for_mixup in fr_for_mixup_list:
+        fr_for_mixup_dict[fr_for_mixup.mixup_lambda] = fr_for_mixup
+    # analyze for 0.1, 0.5, 0.9
+
+    x_01_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.5], train_soft_label)
+    x_09_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.5], fr_for_mixup_dict[0.9], train_soft_label)
+    x_01_09 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.9], train_soft_label)
+    print(
+        tabulate.tabulate([
+            ["x_01_05", x_01_05],
+            ["x_09_05", x_09_05],
+            ["x_01_09", x_01_09],
+        ])
+    )
+    avg_kl_div = (
+        test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_01_05), test_time_mixup.softmax(x_09_05))
+        + test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_01_05), test_time_mixup.softmax(x_01_09))
+        + test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_09_05), test_time_mixup.softmax(x_01_09))
+    ) / 3
+    print(f"avg_kl_div 3: {avg_kl_div}")
+
+    restore_x_list = []
+    for mixup_lambda_1 in np.arange(0.1, 1.0, 0.1):
+        for mixup_lambda_2 in np.arange(0.1, 1.0, 0.1):
+            if mixup_lambda_1 >= mixup_lambda_2:
+                continue
+            restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[mixup_lambda_1], fr_for_mixup_dict[mixup_lambda_2], train_soft_label)
+            restore_x_list.append(restore_x)
+    kl_div_list = []
+    for idx1 in range(0, len(restore_x_list)):
+        for idx2 in range(idx1 + 1, len(restore_x_list)):
+            kl_div = test_time_mixup.calculate_kl_div(test_time_mixup.softmax(restore_x_list[idx1]), test_time_mixup.softmax(restore_x_list[idx2]))
+            kl_div_list.append(kl_div)
+    print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
+    
+    
+
+
+
 
 
 
