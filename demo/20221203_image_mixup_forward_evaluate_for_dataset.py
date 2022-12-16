@@ -331,7 +331,7 @@ def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label):
     return kl_div_list_list
 
 # 针对一个数据集，计算上述 `forward_for_one_input_image` 逻辑
-def calculate_kl_div_for_dataset(model, dataset_root: str):
+def calculate_kl_div_for_dataset(model, dataset_root: str, output_file_path=None):
     
     cls_names = os.listdir(dataset_root)
     image_path_list = []
@@ -353,7 +353,18 @@ def calculate_kl_div_for_dataset(model, dataset_root: str):
             avg_kl_div_list.append(kl_div_average)
 
     print(f"average avg_kl_div: {sum(avg_kl_div_list) / len(avg_kl_div_list)}")
+    
+    # 写文件
+    def save_avg_kl_div_list_to_json_file(avg_kl_div_list, output_file_path = 'tmp/avg_kl_div_list.json'):
+        avg_kl_div_list_rounded = [round(v, 6) for v in avg_kl_div_list]
+        with open(output_file_path, 'w') as f:
+            json.dump({'avg_kl_div_list': avg_kl_div_list_rounded}, f)
+    if output_file_path:
+        save_avg_kl_div_list_to_json_file(avg_kl_div_list, output_file_path)
+
     return avg_kl_div_list
+
+        
 
 
 def main():
@@ -364,6 +375,7 @@ def main():
     parser.add_argument('--mixup_lambda', help='mixup_lambda', default=1.0)
     parser.add_argument('--input_image_path', help='input_image_path', default='')
     parser.add_argument('--command', help='', choices=['kl_div_for_dataset', 'kl_div_for_one_image'])
+    parser.add_argument('--output_file_path', default=None, type=str, help="the file to save")
     parser.add_argument(
         '--device', default='cuda:0', help='Device used for inference')
     args = parser.parse_args()
@@ -384,7 +396,7 @@ def main():
         """
         算一个数据集的 kl_div
         """
-        calculate_kl_div_for_dataset(model, args.dataset_root)
+        calculate_kl_div_for_dataset(model, args.dataset_root, args.output_file_path)
         return 
     else:
         raise ValueError(f"Unexpected command: {args.command}")
