@@ -244,6 +244,9 @@ def evaluate_for_different_mixup_lambda(model, args):
     draw_plot_lines(evaluated_result_list)
 
 
+
+# 针对一张图，根据不同的 mixup_lambda 进行混合后，输出结果之间计算 original X 图片的一致性。
+# 返回多个一致性数值的列表
 def forward_for_one_input_image(model, input_image_path: str):
     # read source_train_image
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
@@ -266,24 +269,25 @@ def forward_for_one_input_image(model, input_image_path: str):
     fr_for_mixup_dict = {}
     for fr_for_mixup in fr_for_mixup_list:
         fr_for_mixup_dict[fr_for_mixup.mixup_lambda] = fr_for_mixup
-    # analyze for 0.1, 0.5, 0.9
-
-    x_01_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.5], train_soft_label)
-    x_09_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.5], fr_for_mixup_dict[0.9], train_soft_label)
-    x_01_09 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.9], train_soft_label)
-    print(
-        tabulate.tabulate([
-            ["x_01_05", x_01_05],
-            ["x_09_05", x_09_05],
-            ["x_01_09", x_01_09],
-        ])
-    )
-    avg_kl_div = (
-        test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_01_05), test_time_mixup.softmax(x_09_05))
-        + test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_01_05), test_time_mixup.softmax(x_01_09))
-        + test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_09_05), test_time_mixup.softmax(x_01_09))
-    ) / 3
-    print(f"avg_kl_div 3: {avg_kl_div}")
+    
+    
+    # # analyze for 0.1, 0.5, 0.9
+    # x_01_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.5], train_soft_label)
+    # x_09_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.5], fr_for_mixup_dict[0.9], train_soft_label)
+    # x_01_09 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.9], train_soft_label)
+    # # print(
+    # #     tabulate.tabulate([
+    #         ["x_01_05", x_01_05],
+    #         ["x_09_05", x_09_05],
+    #         ["x_01_09", x_01_09],
+    #     ])
+    # )
+    # avg_kl_div = (
+    #     test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_01_05), test_time_mixup.softmax(x_09_05))
+    #     + test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_01_05), test_time_mixup.softmax(x_01_09))
+    #     + test_time_mixup.calculate_kl_div(test_time_mixup.softmax(x_09_05), test_time_mixup.softmax(x_01_09))
+    # ) / 3
+    # print(f"avg_kl_div 3: {avg_kl_div}")
 
     restore_x_list = []
     for mixup_lambda_1 in np.arange(0.1, 1.0, 0.1):
@@ -297,14 +301,29 @@ def forward_for_one_input_image(model, input_image_path: str):
         for idx2 in range(idx1 + 1, len(restore_x_list)):
             kl_div = test_time_mixup.calculate_kl_div(test_time_mixup.softmax(restore_x_list[idx1]), test_time_mixup.softmax(restore_x_list[idx2]))
             kl_div_list.append(kl_div)
-    print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
+    # print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
+    return kl_div_list
+
+# 针对一个数据集，计算上述 `forward_for_one_input_image` 逻辑
+def calculate_kl_div_for_dataset(model, dataset_root: str):
     
+    cls_names = os.listdir(dataset_root)
+    image_path_list = []
+    for cls_name in cls_names:
+        cls_dir_path = os.path.join(dataset_root, cls_name)
+        cls_dir_file_names = os.listdir(cls_dir_path)
+        for cls_dir_file_name in tqdm(cls_dir_file_names):
+            img_path = os.path.join(cls_dir_path, cls_dir_file_name)
+            image_path_list.append(img_path)
     
+    avg_kl_div_list = []
+    for image_path in tqdm(image_path_list):
+        kl_div_list = forward_for_one_input_image(model, image_path)
+        kl_div_average = sum(kl_div_list) / len(kl_div_list)
+        avg_kl_div_list.append(kl_div_average)
 
-
-
-
-
+    print(f"average avg_kl_div: {sum(avg_kl_div_list) / len(avg_kl_div_list)}")
+    return avg_kl_div_list
 
 
 def main():
@@ -314,17 +333,33 @@ def main():
     parser.add_argument('checkpoint', help='Checkpoint file')
     parser.add_argument('--mixup_lambda', help='mixup_lambda', default=1.0)
     parser.add_argument('--input_image_path', help='input_image_path', default='')
+    parser.add_argument('--command', help='', choices=['kl_div_for_dataset', 'kl_div_for_one_image'])
     parser.add_argument(
         '--device', default='cuda:0', help='Device used for inference')
     args = parser.parse_args()
 
     # build the model from a config file and a checkpoint file
     model = init_model(args.config, args.checkpoint, device=args.device)
-    
 
-    if args.input_image_path:
-        forward_for_one_input_image(model, args.input_image_path)
-        return
+    if args.command == 'kl_div_for_one_image':
+        """
+        算一张图的 kl_div
+        """
+        if args.input_image_path:
+            forward_for_one_input_image(model, args.input_image_path)
+            return
+        else:
+            raise ValueError(f"Incorrect parameter about `--input_image_path`")
+    elif args.command == 'kl_div_for_dataset':
+        """
+        算一个数据集的 kl_div
+        """
+        calculate_kl_div_for_dataset(model, args.dataset_root)
+        return 
+    else:
+        raise ValueError(f"Unexpected command: {args.command}")
+
+
 
     # evaluate once
     eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_lambda=float(args.mixup_lambda))
