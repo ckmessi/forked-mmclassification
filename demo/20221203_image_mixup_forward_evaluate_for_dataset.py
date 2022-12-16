@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 
 from mmcls.apis import init_model, show_result_pyplot
 
+import time
 import os
 import json
 from tqdm import tqdm
@@ -254,8 +255,11 @@ def forward_for_one_input_image(model, input_image_path_list: str):
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
     
     fr_for_mixup_list = []
-    for mixup_lambda in np.arange(0.1, 1.0, 0.1):
+    for mixup_lambda in np.arange(0.1, 1.0, 0.2):
+        # t0 = time.time()
         pred_results_dict = inference_model_for_softmax(model, input_image_path_list, source_train_mixed_img, mixup_lambda=mixup_lambda)
+        # print(f"inference time: {time.time() - t0}s")
+
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         gt_label_int_list = [-1 for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
@@ -296,23 +300,32 @@ def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label):
     # ) / 3
     # print(f"avg_kl_div 3: {avg_kl_div}")
 
+    t0 = time.time()
     kl_div_list_list = []
     for file_name, fr_for_mixup_dict_one_image in fr_for_mixup_dict.items():
         restore_x_list = []
-        for mixup_lambda_1 in np.arange(0.1, 1.0, 0.1):
-            for mixup_lambda_2 in np.arange(0.1, 1.0, 0.1):
+        for mixup_lambda_1 in np.arange(0.1, 1.0, 0.2):
+            for mixup_lambda_2 in np.arange(0.1, 1.0, 0.2):
                 if mixup_lambda_1 >= mixup_lambda_2:
                     continue
                 restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict_one_image[mixup_lambda_1], fr_for_mixup_dict_one_image[mixup_lambda_2], train_soft_label)
                 restore_x_list.append(restore_x)
         kl_div_list = []
+        
+
+        # print(f"start to calculate kl div for {len(restore_x_list) * len(restore_x_list)} times")
+        restore_x_list_softmax = [test_time_mixup.softmax(x) for x in restore_x_list]
+        t01 = time.time()
         for idx1 in range(0, len(restore_x_list)):
             for idx2 in range(idx1 + 1, len(restore_x_list)):
-                kl_div = test_time_mixup.calculate_kl_div(test_time_mixup.softmax(restore_x_list[idx1]), test_time_mixup.softmax(restore_x_list[idx2]))
+                # kl_div = test_time_mixup.calculate_kl_div(test_time_mixup.softmax(restore_x_list[idx1]), test_time_mixup.softmax(restore_x_list[idx2]))
+                kl_div = test_time_mixup.calculate_kl_div(restore_x_list_softmax[idx1], restore_x_list_softmax[idx2])
                 kl_div_list.append(kl_div)
+                pass
+        # print(f"[Time Cost] calculate_kl_div cost {time.time() - t01}s")
         # print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
         kl_div_list_list.append(kl_div_list)
-
+    # print(f"[Time Cost] calculate_div_from_forward_result_dict cost {time.time() - t0}s")
     # kl_div_list_list is a list of kl_div_list
     # kl_div_list_list[0] is a list of float
     return kl_div_list_list
