@@ -249,21 +249,20 @@ def evaluate_for_different_mixup_lambda(model, args):
 # 针对n张图并行
 # 针对一张图，根据不同的 mixup_lambda 进行混合后，输出结果之间计算 original X 图片的一致性。
 # 返回多个一致性数值的列表
-def forward_for_one_input_image(model, input_image_path: str):
+def forward_for_one_input_image(model, input_image_path_list: str):
     # read source_train_image
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
     
     fr_for_mixup_list = []
     for mixup_lambda in np.arange(0.1, 1.0, 0.1):
-        pred_results_dict = inference_model_for_softmax(model, [input_image_path], source_train_mixed_img, mixup_lambda=mixup_lambda)
+        pred_results_dict = inference_model_for_softmax(model, input_image_path_list, source_train_mixed_img, mixup_lambda=mixup_lambda)
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         gt_label_int_list = [-1 for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
         pred_scores_list = [p for p in pred_results_dict['scores']]
-        img_path_list = [input_image_path]
         recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_lambda) for p in pred_results_dict['scores']]
-        cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
-        cur_fr_for_mixup_list = [ForwardResultForMixup(input_image_path, mixup_lambda, fr) for fr in cur_fr_list]
+        cur_fr_list = [ForwardResult(*x) for x in zip(input_image_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
+        cur_fr_for_mixup_list = [ForwardResultForMixup(input_image_path, mixup_lambda, fr) for (input_image_path, fr) in zip(input_image_path_list, cur_fr_list)]
         fr_for_mixup_list.extend(cur_fr_for_mixup_list)
     
     # print(fr_for_mixup_list)
@@ -328,7 +327,7 @@ def calculate_kl_div_for_dataset(model, dataset_root: str):
     
     avg_kl_div_list = []
     for image_path in tqdm(image_path_list):
-        kl_div_list = forward_for_one_input_image(model, image_path)
+        kl_div_list = forward_for_one_input_image(model, [image_path])
         kl_div_average = sum(kl_div_list) / len(kl_div_list)
         avg_kl_div_list.append(kl_div_average)
 
@@ -356,7 +355,7 @@ def main():
         算一张图的 kl_div
         """
         if args.input_image_path:
-            forward_for_one_input_image(model, args.input_image_path)
+            forward_for_one_input_image(model, [args.input_image_path])
             return
         else:
             raise ValueError(f"Incorrect parameter about `--input_image_path`")
