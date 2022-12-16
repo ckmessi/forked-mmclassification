@@ -274,10 +274,10 @@ def forward_for_one_input_image(model, input_image_path_list: str):
             fr_for_mixup_dict[file_path] = {}
         fr_for_mixup_dict[file_path][fr_for_mixup.mixup_lambda] = fr_for_mixup
     
-    return calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label)
+    return calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label)
 
 
-def calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label):
+def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label):
     # # analyze for 0.1, 0.5, 0.9
     # x_01_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.5], train_soft_label)
     # x_09_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.5], fr_for_mixup_dict[0.9], train_soft_label)
@@ -296,22 +296,26 @@ def calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label):
     # ) / 3
     # print(f"avg_kl_div 3: {avg_kl_div}")
 
-    fr_for_mixup_dict_one_image = fr_for_mixup_dict[list(fr_for_mixup_dict.keys())[0]]
+    kl_div_list_list = []
+    for file_name, fr_for_mixup_dict_one_image in fr_for_mixup_dict.items():
+        restore_x_list = []
+        for mixup_lambda_1 in np.arange(0.1, 1.0, 0.1):
+            for mixup_lambda_2 in np.arange(0.1, 1.0, 0.1):
+                if mixup_lambda_1 >= mixup_lambda_2:
+                    continue
+                restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict_one_image[mixup_lambda_1], fr_for_mixup_dict_one_image[mixup_lambda_2], train_soft_label)
+                restore_x_list.append(restore_x)
+        kl_div_list = []
+        for idx1 in range(0, len(restore_x_list)):
+            for idx2 in range(idx1 + 1, len(restore_x_list)):
+                kl_div = test_time_mixup.calculate_kl_div(test_time_mixup.softmax(restore_x_list[idx1]), test_time_mixup.softmax(restore_x_list[idx2]))
+                kl_div_list.append(kl_div)
+        # print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
+        kl_div_list_list.append(kl_div_list)
 
-    restore_x_list = []
-    for mixup_lambda_1 in np.arange(0.1, 1.0, 0.1):
-        for mixup_lambda_2 in np.arange(0.1, 1.0, 0.1):
-            if mixup_lambda_1 >= mixup_lambda_2:
-                continue
-            restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict_one_image[mixup_lambda_1], fr_for_mixup_dict_one_image[mixup_lambda_2], train_soft_label)
-            restore_x_list.append(restore_x)
-    kl_div_list = []
-    for idx1 in range(0, len(restore_x_list)):
-        for idx2 in range(idx1 + 1, len(restore_x_list)):
-            kl_div = test_time_mixup.calculate_kl_div(test_time_mixup.softmax(restore_x_list[idx1]), test_time_mixup.softmax(restore_x_list[idx2]))
-            kl_div_list.append(kl_div)
-    # print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
-    return kl_div_list
+    # kl_div_list_list is a list of kl_div_list
+    # kl_div_list_list[0] is a list of float
+    return kl_div_list_list
 
 # 针对一个数据集，计算上述 `forward_for_one_input_image` 逻辑
 def calculate_kl_div_for_dataset(model, dataset_root: str):
@@ -325,11 +329,15 @@ def calculate_kl_div_for_dataset(model, dataset_root: str):
             img_path = os.path.join(cls_dir_path, cls_dir_file_name)
             image_path_list.append(img_path)
     
+    
     avg_kl_div_list = []
-    for image_path in tqdm(image_path_list):
-        kl_div_list = forward_for_one_input_image(model, [image_path])
-        kl_div_average = sum(kl_div_list) / len(kl_div_list)
-        avg_kl_div_list.append(kl_div_average)
+    BATCH_SIZE = 256
+    for idx in tqdm(range(0, len(image_path_list), BATCH_SIZE)):
+        cur_batch = image_path_list[idx:idx+BATCH_SIZE]
+        kl_div_list_list = forward_for_one_input_image(model, cur_batch)
+        for kl_div_list in kl_div_list_list:
+            kl_div_average = sum(kl_div_list) / len(kl_div_list)
+            avg_kl_div_list.append(kl_div_average)
 
     print(f"average avg_kl_div: {sum(avg_kl_div_list) / len(avg_kl_div_list)}")
     return avg_kl_div_list
