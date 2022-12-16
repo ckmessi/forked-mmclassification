@@ -245,6 +245,8 @@ def evaluate_for_different_mixup_lambda(model, args):
 
 
 
+
+# 针对n张图并行
 # 针对一张图，根据不同的 mixup_lambda 进行混合后，输出结果之间计算 original X 图片的一致性。
 # 返回多个一致性数值的列表
 def forward_for_one_input_image(model, input_image_path: str):
@@ -268,7 +270,10 @@ def forward_for_one_input_image(model, input_image_path: str):
 
     fr_for_mixup_dict = {}
     for fr_for_mixup in fr_for_mixup_list:
-        fr_for_mixup_dict[fr_for_mixup.mixup_lambda] = fr_for_mixup
+        file_path = fr_for_mixup.file_path
+        if file_path not in fr_for_mixup_dict:
+            fr_for_mixup_dict[file_path] = {}
+        fr_for_mixup_dict[file_path][fr_for_mixup.mixup_lambda] = fr_for_mixup
     
     return calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label)
 
@@ -292,12 +297,14 @@ def calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label):
     # ) / 3
     # print(f"avg_kl_div 3: {avg_kl_div}")
 
+    fr_for_mixup_dict_one_image = fr_for_mixup_dict[list(fr_for_mixup_dict.keys())[0]]
+
     restore_x_list = []
     for mixup_lambda_1 in np.arange(0.1, 1.0, 0.1):
         for mixup_lambda_2 in np.arange(0.1, 1.0, 0.1):
             if mixup_lambda_1 >= mixup_lambda_2:
                 continue
-            restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[mixup_lambda_1], fr_for_mixup_dict[mixup_lambda_2], train_soft_label)
+            restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict_one_image[mixup_lambda_1], fr_for_mixup_dict_one_image[mixup_lambda_2], train_soft_label)
             restore_x_list.append(restore_x)
     kl_div_list = []
     for idx1 in range(0, len(restore_x_list)):
