@@ -270,7 +270,10 @@ def forward_for_one_input_image(model, input_image_path: str):
     for fr_for_mixup in fr_for_mixup_list:
         fr_for_mixup_dict[fr_for_mixup.mixup_lambda] = fr_for_mixup
     
-    
+    return calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label)
+
+
+def calculate_div_from_forward_result(fr_for_mixup_dict, train_soft_label):
     # # analyze for 0.1, 0.5, 0.9
     # x_01_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.5], train_soft_label)
     # x_09_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.5], fr_for_mixup_dict[0.9], train_soft_label)
