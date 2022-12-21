@@ -255,7 +255,8 @@ def forward_for_one_input_image(model, input_image_path_list: str):
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
     
     fr_for_mixup_list = []
-    for mixup_lambda in np.arange(0.1, 1.0, 0.2):
+    lambda_samples = np.arange(0.1, 0.39, 0.1)
+    for mixup_lambda in lambda_samples:
         # t0 = time.time()
         pred_results_dict = inference_model_for_softmax(model, input_image_path_list, source_train_mixed_img, mixup_lambda=mixup_lambda)
         # print(f"inference time: {time.time() - t0}s")
@@ -278,10 +279,10 @@ def forward_for_one_input_image(model, input_image_path_list: str):
             fr_for_mixup_dict[file_path] = {}
         fr_for_mixup_dict[file_path][fr_for_mixup.mixup_lambda] = fr_for_mixup
     
-    return calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label)
+    return calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label, lambda_samples)
 
 
-def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label):
+def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label, lambda_samples):
     # # analyze for 0.1, 0.5, 0.9
     # x_01_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.1], fr_for_mixup_dict[0.5], train_soft_label)
     # x_09_05 = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict[0.5], fr_for_mixup_dict[0.9], train_soft_label)
@@ -304,17 +305,28 @@ def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label):
     kl_div_list_list = []
     for file_name, fr_for_mixup_dict_one_image in fr_for_mixup_dict.items():
         restore_x_list = []
-        for mixup_lambda_1 in np.arange(0.1, 1.0, 0.2):
-            for mixup_lambda_2 in np.arange(0.1, 1.0, 0.2):
+        for mixup_lambda_1 in lambda_samples:
+            for mixup_lambda_2 in lambda_samples:
                 if mixup_lambda_1 >= mixup_lambda_2:
                     continue
                 restore_x = ForwardResultForMixup.calculate_original_x(fr_for_mixup_dict_one_image[mixup_lambda_1], fr_for_mixup_dict_one_image[mixup_lambda_2], train_soft_label)
+
+                # print(tabulate.tabulate([
+                #     ['file_name', file_name],
+                #     ['fr1', fr_for_mixup_dict_one_image[mixup_lambda_1]],
+                #     ['fr2', fr_for_mixup_dict_one_image[mixup_lambda_2]],
+                #     ['restore_x', restore_x]
+                # ]))
+
                 restore_x_list.append(restore_x)
         kl_div_list = []
+        # print(f"lambda_samples is {lambda_samples}")
+        # print(f"restore_x_list for file {file_name}: {restore_x_list}")
         
 
         # print(f"start to calculate kl div for {len(restore_x_list) * len(restore_x_list)} times")
         restore_x_list_softmax = [test_time_mixup.softmax(x) for x in restore_x_list]
+        # print(f"restore_x_list_softmax for file {file_name}: {restore_x_list_softmax}")
         t01 = time.time()
         for idx1 in range(0, len(restore_x_list)):
             for idx2 in range(idx1 + 1, len(restore_x_list)):
@@ -323,7 +335,8 @@ def calculate_div_from_forward_result_dict(fr_for_mixup_dict, train_soft_label):
                 kl_div_list.append(kl_div)
                 pass
         # print(f"[Time Cost] calculate_kl_div cost {time.time() - t01}s")
-        # print(f"avg_kl_div: {sum(kl_div_list) / len(kl_div_list)}")
+        # print(f"kl_div_list for file {file_name}: {kl_div_list}")
+        # print(f"avg_kl_div for file {file_name}: {sum(kl_div_list) / len(kl_div_list)}")
         kl_div_list_list.append(kl_div_list)
     # print(f"[Time Cost] calculate_div_from_forward_result_dict cost {time.time() - t0}s")
     # kl_div_list_list is a list of kl_div_list
@@ -351,8 +364,9 @@ def calculate_kl_div_for_dataset(model, dataset_root: str, output_file_path=None
         for kl_div_list in kl_div_list_list:
             kl_div_average = sum(kl_div_list) / len(kl_div_list)
             avg_kl_div_list.append(kl_div_average)
+        # break
 
-    print(f"average avg_kl_div: {sum(avg_kl_div_list) / len(avg_kl_div_list)}")
+    # print(f"average avg_kl_div: {sum(avg_kl_div_list) / len(avg_kl_div_list)}")
     
     # 写文件
     def save_avg_kl_div_list_to_json_file(avg_kl_div_list, output_file_path = 'tmp/avg_kl_div_list.json'):
