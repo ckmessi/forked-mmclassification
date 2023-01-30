@@ -48,18 +48,18 @@ data = dict(
     train=dict(
         type=dataset_type,
         data_prefix='data/VISDA-C/',
-        ann_file='data/VISDA-C/validation_list_train_0.9.txt',
+        ann_file='data/VISDA-C/validation_list_train_0.8.txt',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         data_prefix='data/VISDA-C/',
-        ann_file='data/VISDA-C/validation_list_train_0.9.txt',
+        ann_file='data/VISDA-C/validation_list_val_0.8.txt',
         pipeline=test_pipeline),
     test=dict(
         # replace `data/val` with `data/test` for standard test
         type=dataset_type,
         data_prefix='data/VISDA-C/',
-        ann_file='data/VISDA-C/validation_list_train_0.9.txt',
+        ann_file='data/VISDA-C/validation_list_val_0.8.txt',
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='accuracy')
 

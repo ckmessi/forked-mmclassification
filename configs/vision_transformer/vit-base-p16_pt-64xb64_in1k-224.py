@@ -10,3 +10,5 @@ model = dict(
     train_cfg=dict(
         augments=dict(type='BatchMixup', alpha=0.2, num_classes=1000,
                       prob=1.)))
+                
+resume_from = '/home/chenkai/code/sample/mmclassification/work_dirs/vit-base-p16_pt-64xb64_in1k-224/epoch_284.pth'
