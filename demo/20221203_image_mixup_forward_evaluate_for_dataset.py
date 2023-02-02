@@ -104,6 +104,7 @@ class ForwardResult:
 
     @property
     def kl_div_between_pred_scores_and_recovered_scores(self):
+        # NOTE: 2023-02-02 @chenkai，算这个有啥意义？不是一个维度的内容呀
         return test_time_mixup.calculate_kl_div(test_time_mixup.softmax(self.pred_scores), test_time_mixup.softmax(self.recovered_scores))
 
     def calculate_compositive_label_int(self, alpha=1.0):
@@ -154,11 +155,13 @@ def build_source_train_mixed_img():
 
 
 def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_lambda=1.0):
-    # read source_train_image
+    # 获取一张源域的（混合）图片，以及对应的训练标签
     source_train_mixed_img, train_soft_label = build_source_train_mixed_img()
+
     # cv2.imwrite("source_train_mixed_img.jpg", source_train_mixed_img)
     # print(f"train_soft_label: {train_soft_label}")
 
+    # 按照 `类别/文件名` 遍历，逐个初始化 `ForwardResult` 对象，等待遍历。
     fr_list = []
     cls_names = os.listdir(dataset_root)
     forward_result_list_to_perform = []
@@ -170,33 +173,33 @@ def evaluate_for_dataset(model, dataset_root: str, max_count=999999, mixup_lambd
             gt_label_int = int(cls_name)
             fr = ForwardResult(img_path, gt_label_int, 0, 0, [])
             forward_result_list_to_perform.append(fr)
-
     print(f"Collect image paths to forward finished.")
 
+    # 开始推理
     BATCH_SIZE = 32
     for idx in tqdm(range(0, len(forward_result_list_to_perform), BATCH_SIZE)):
         batch_data = forward_result_list_to_perform[idx: idx+BATCH_SIZE]
-        # TODO: add img_target correctly
         img_path_list = [fr.file_path for fr in batch_data]
         gt_label_int_list = [fr.gt_label_int for fr in batch_data]
 
+        # 执行推理，组织结果
         pred_results_dict = inference_model_for_softmax(model, img_path_list, source_train_mixed_img, mixup_lambda=mixup_lambda)
-
         pred_label_int_list = [int(p) for p in pred_results_dict['pred_label']]
         pred_score_list = [float(p) for p in pred_results_dict['pred_score']]
         pred_scores_list = [p for p in pred_results_dict['scores']]
+        
+        # 根据推理结果和之前的混合标签、混合权重 ，计算 recovered 的结果
         recovered_scores_list = [test_time_mixup.calculate_recovered_scores(train_soft_label, p, source_ratio=1-mixup_lambda) for p in pred_results_dict['scores']]
-
         cur_fr_list = [ForwardResult(*x) for x in zip(img_path_list, gt_label_int_list, pred_label_int_list, pred_score_list, pred_scores_list, recovered_scores_list)]
         fr_list.extend(cur_fr_list)
 
     # calculate
+    # NOTE: @chenkai，这个计算好像没有意义呀？
     total_count = len(fr_list)
     correct_count = len(list(filter(lambda x: x.gt_label_int == x.pred_label_int, fr_list)))
     correct_count_by_recovered_scores = len(list(filter(lambda x: x.gt_label_int == x.recovered_label_int, fr_list)))
     accuracy = correct_count / total_count
     accuracy_by_recovered_scores = correct_count_by_recovered_scores / total_count
-    
     correct_count_by_compositive_scores_list = [
         len(list(filter(lambda x: x.gt_label_int == x.calculate_compositive_label_int(alpha), fr_list)))
         for alpha in np.arange(0.1, 1.0, 0.1)
