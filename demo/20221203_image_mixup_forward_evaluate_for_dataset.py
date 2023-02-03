@@ -421,6 +421,7 @@ def main():
 
 
     # evaluate once
+    # 下面这个没用了，别看这个。
     eval_res = evaluate_for_dataset(model, args.dataset_root, mixup_lambda=float(args.mixup_lambda))
     print(eval_res)
 
